@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: creator_marketplace_db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-marketplace}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: creator_marketplace_redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - app-network
+
+  # Next.js Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: creator_marketplace_app
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-marketplace}
+      REDIS_URL: redis://redis:6379
+      EMAIL_USER: ${EMAIL_USER}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@creatormarketplace.co.za}
+      PAYFAST_MERCHANT_ID: ${PAYFAST_MERCHANT_ID}
+      PAYFAST_MERCHANT_KEY: ${PAYFAST_MERCHANT_KEY}
+      PAYFAST_PASSPHRASE: ${PAYFAST_PASSPHRASE}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-change-me}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - app-network
+    command: npm run dev
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
